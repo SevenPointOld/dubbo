@@ -477,7 +477,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
         String scope = url.getParameter(Constants.SCOPE_KEY);
         //配置为none不暴露
-        if (!Constants.SCOPE_NONE.toString().equalsIgnoreCase(scope)) {
+        if (!Constants.SCOPE_NONE.toString().equalsIgnoreCase(scope)) { //默认情况会本地暴露和远程暴露
 
             //配置不是remote的情况下做本地暴露 (配置为remote，则表示只暴露远程服务)
             if (!Constants.SCOPE_REMOTE.toString().equalsIgnoreCase(scope)) {

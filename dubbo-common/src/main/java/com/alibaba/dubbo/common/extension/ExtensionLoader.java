@@ -525,8 +525,10 @@ public class ExtensionLoader<T> {
                         Class<?> pt = method.getParameterTypes()[0];
                         try {
                             String property = method.getName().length() > 3 ? method.getName().substring(3, 4).toLowerCase() + method.getName().substring(4) : "";
+                            //扩展点的属性如果也是扩展点，则获取一个自适应的扩展点代理对象
                             Object object = objectFactory.getExtension(pt, property);
                             if (object != null) {
+                                //扩展点的属性，自动注入
                                 method.invoke(instance, object);
                             }
                         } catch (Exception e) {
@@ -578,11 +580,12 @@ public class ExtensionLoader<T> {
                     throw new IllegalStateException("more than 1 default extension name on extension " + type.getName()
                             + ": " + Arrays.toString(names));
                 }
-                if (names.length == 1) cachedDefaultName = names[0];
+                if (names.length == 1) cachedDefaultName = names[0];// 将扩展接口上@SPI的value作为默认扩展点name
             }
         }
 
         Map<String, Class<?>> extensionClasses = new HashMap<String, Class<?>>();
+        // 扫描扩展点配置文件，填充name映射扩展点实现类的map
         loadFile(extensionClasses, DUBBO_INTERNAL_DIRECTORY);
         loadFile(extensionClasses, DUBBO_DIRECTORY);
         loadFile(extensionClasses, SERVICES_DIRECTORY);
@@ -615,17 +618,18 @@ public class ExtensionLoader<T> {
                                         String name = null;
                                         int i = line.indexOf('=');
                                         if (i > 0) {
-                                            name = line.substring(0, i).trim();
-                                            line = line.substring(i + 1).trim();
+                                            name = line.substring(0, i).trim(); // 映射扩展点实现类name
+                                            line = line.substring(i + 1).trim();// line就是扩展点实现类class全路径
                                         }
                                         if (line.length() > 0) {
-                                            Class<?> clazz = Class.forName(line, true, classLoader);
-                                            if (!type.isAssignableFrom(clazz)) {
+                                            Class<?> clazz = Class.forName(line, true, classLoader);// 会执行类加载并且初始化的操作
+                                            if (!type.isAssignableFrom(clazz)) {// 判断是不是扩展点接口的子类型
                                                 throw new IllegalStateException("Error when load extension class(interface: " +
                                                         type + ", class line: " + clazz.getName() + "), class "
                                                         + clazz.getName() + "is not subtype of interface.");
                                             }
-                                            if (clazz.isAnnotationPresent(Adaptive.class)) {
+                                            if (clazz.isAnnotationPresent(Adaptive.class)) { // 判断扩展点实现类是否标有自适应注解
+                                                // 一个扩展点接口 只允许有一个标注Adaptive注解的实现类，否则报错
                                                 if (cachedAdaptiveClass == null) {
                                                     cachedAdaptiveClass = clazz;
                                                 } else if (!cachedAdaptiveClass.equals(clazz)) {
@@ -633,18 +637,22 @@ public class ExtensionLoader<T> {
                                                             + cachedAdaptiveClass.getClass().getName()
                                                             + ", " + clazz.getClass().getName());
                                                 }
-                                            } else {
+                                            } else { // 普通扩展点实现类
                                                 try {
+                                                    // 如果该扩展点实现类有一个构造函数是接收该扩展点的类型为参数，则认为该扩展点实现类是一个wrapper包装类
                                                     clazz.getConstructor(type);
                                                     Set<Class<?>> wrappers = cachedWrapperClasses;
-                                                    if (wrappers == null) {
+                                                    if (wrappers == null) { //这里看似有多线程问题， 但上层方法getExtensionClasses已有同步块
                                                         cachedWrapperClasses = new ConcurrentHashSet<Class<?>>();
                                                         wrappers = cachedWrapperClasses;
                                                     }
+                                                    // 单独有个实现类集合放置扩展点的wrapper包装类
                                                     wrappers.add(clazz);
                                                 } catch (NoSuchMethodException e) {
+                                                    // 这里说明该类型只是一个普通的扩展点实现类
                                                     clazz.getConstructor();
                                                     if (name == null || name.length() == 0) {
+                                                        // 这里会拿一个name的缺省值 例如Protocol 的扩展点实现类 RegistryProtocol，如果name为空 则会截取前缀registry作为默认name
                                                         name = findAnnotationName(clazz);
                                                         if (name == null || name.length() == 0) {
                                                             if (clazz.getSimpleName().length() > type.getSimpleName().length()
@@ -657,16 +665,19 @@ public class ExtensionLoader<T> {
                                                     }
                                                     String[] names = NAME_SEPARATOR.split(name);
                                                     if (names != null && names.length > 0) {
+                                                        // 扩展点实现类标注激活会放到一个激活map里面
                                                         Activate activate = clazz.getAnnotation(Activate.class);
                                                         if (activate != null) {
                                                             cachedActivates.put(names[0], activate);
                                                         }
                                                         for (String n : names) {
                                                             if (!cachedNames.containsKey(clazz)) {
+                                                                // 类型映射name，只多个name只会映射第一个
                                                                 cachedNames.put(clazz, n);
                                                             }
                                                             Class<?> c = extensionClasses.get(n);
                                                             if (c == null) {
+                                                                // name映射扩展点实现类
                                                                 extensionClasses.put(n, clazz);
                                                             } else if (c != clazz) {
                                                                 throw new IllegalStateException("Duplicate extension " + type.getName() + " name " + n + " on " + c.getName() + " and " + clazz.getName());
