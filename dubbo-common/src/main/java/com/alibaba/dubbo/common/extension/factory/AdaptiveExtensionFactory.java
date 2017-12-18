@@ -36,16 +36,17 @@ public class AdaptiveExtensionFactory implements ExtensionFactory {
     public AdaptiveExtensionFactory() {
         ExtensionLoader<ExtensionFactory> loader = ExtensionLoader.getExtensionLoader(ExtensionFactory.class);
         List<ExtensionFactory> list = new ArrayList<ExtensionFactory>();
+        // 遍历所有支持的扩展点实现类name
         for (String name : loader.getSupportedExtensions()) {
-            list.add(loader.getExtension(name));
+            list.add(loader.getExtension(name)); // 逐个添加进集合
         }
         factories = Collections.unmodifiableList(list);
     }
 
     public <T> T getExtension(Class<T> type, String name) {
-        for (ExtensionFactory factory : factories) {
+        for (ExtensionFactory factory : factories) { // 逐个委派其他扩展点实现
             T extension = factory.getExtension(type, name);
-            if (extension != null) {
+            if (extension != null) { // 获取到实例就返回
                 return extension;
             }
         }

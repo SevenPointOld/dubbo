@@ -117,7 +117,7 @@ public class ExtensionLoader<T> {
 
         ExtensionLoader<T> loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         if (loader == null) {
-            EXTENSION_LOADERS.putIfAbsent(type, new ExtensionLoader<T>(type));
+            EXTENSION_LOADERS.putIfAbsent(type, new ExtensionLoader<T>(type)); // 此时如果多个线程添加同一类型的扩展点加载器，putIfAbsent保证只会有一个会添加成功
             loader = (ExtensionLoader<T>) EXTENSION_LOADERS.get(type);
         }
         return loader;
@@ -496,6 +496,7 @@ public class ExtensionLoader<T> {
             throw findException(name);
         }
         try {
+            // 扩展点实现多个扩展接口，单实例缓存
             T instance = (T) EXTENSION_INSTANCES.get(clazz);
             if (instance == null) {
                 EXTENSION_INSTANCES.putIfAbsent(clazz, (T) clazz.newInstance());
@@ -505,6 +506,7 @@ public class ExtensionLoader<T> {
             Set<Class<?>> wrapperClasses = cachedWrapperClasses;
             if (wrapperClasses != null && wrapperClasses.size() > 0) {
                 for (Class<?> wrapperClass : wrapperClasses) {
+                    // 这里是一层一层的往外包装
                     instance = injectExtension((T) wrapperClass.getConstructor(type).newInstance(instance));
                 }
             }
@@ -517,7 +519,7 @@ public class ExtensionLoader<T> {
 
     private T injectExtension(T instance) {
         try {
-            if (objectFactory != null) {
+            if (objectFactory != null) { // 当泛型是ExtensionFactory时，objectFactory才会为空
                 for (Method method : instance.getClass().getMethods()) {
                     if (method.getName().startsWith("set")
                             && method.getParameterTypes().length == 1
@@ -672,7 +674,7 @@ public class ExtensionLoader<T> {
                                                         }
                                                         for (String n : names) {
                                                             if (!cachedNames.containsKey(clazz)) {
-                                                                // 类型映射name，只多个name只会映射第一个
+                                                                // 类型映射name，多个name只会映射第一个
                                                                 cachedNames.put(clazz, n);
                                                             }
                                                             Class<?> c = extensionClasses.get(n);
@@ -732,19 +734,25 @@ public class ExtensionLoader<T> {
 
     private Class<?> getAdaptiveExtensionClass() {
         getExtensionClasses();
-        if (cachedAdaptiveClass != null) {
+        if (cachedAdaptiveClass != null) { // 如果扩展点的实现类标注有@Adaptive注解，则直接返回该实现类
             return cachedAdaptiveClass;
         }
+        // 否则创建自适应的代理类
         return cachedAdaptiveClass = createAdaptiveExtensionClass();
     }
 
     private Class<?> createAdaptiveExtensionClass() {
-        String code = createAdaptiveExtensionClassCode();
+        String code = createAdaptiveExtensionClassCode(); // 创建自适应扩展类的源代码
         ClassLoader classLoader = findClassLoader();
+        // 获取自适应的编译器
         com.alibaba.dubbo.common.compiler.Compiler compiler = ExtensionLoader.getExtensionLoader(com.alibaba.dubbo.common.compiler.Compiler.class).getAdaptiveExtension();
-        return compiler.compile(code, classLoader);
+        return compiler.compile(code, classLoader); //编译源码并返回Class对象
     }
 
+    /**
+     * 构建自适应扩展类源码
+     * @return
+     */
     private String createAdaptiveExtensionClassCode() {
         StringBuilder codeBuidler = new StringBuilder();
         Method[] methods = type.getMethods();
@@ -807,9 +815,9 @@ public class ExtensionLoader<T> {
                                     && !Modifier.isStatic(m.getModifiers())
                                     && m.getParameterTypes().length == 0
                                     && m.getReturnType() == URL.class) {
-                                urlTypeIndex = i;
+                                urlTypeIndex = i;  // 这里表示第几个参数有URL属性
                                 attribMethod = name;
-                                break LBL_PTS;
+                                break LBL_PTS; // 找到一个参数有返回URL的get方法就跳出整个循环嵌套
                             }
                         }
                     }
@@ -820,10 +828,10 @@ public class ExtensionLoader<T> {
 
                     // Null point check
                     String s = String.format("\nif (arg%d == null) throw new IllegalArgumentException(\"%s argument == null\");",
-                            urlTypeIndex, pts[urlTypeIndex].getName());
+                            urlTypeIndex, pts[urlTypeIndex].getName()); // 首先这个参数不能为空
                     code.append(s);
                     s = String.format("\nif (arg%d.%s() == null) throw new IllegalArgumentException(\"%s argument %s() == null\");",
-                            urlTypeIndex, attribMethod, pts[urlTypeIndex].getName(), attribMethod);
+                            urlTypeIndex, attribMethod, pts[urlTypeIndex].getName(), attribMethod); // 然后这个参数的URL属性不能为空
                     code.append(s);
 
                     s = String.format("%s url = arg%d.%s();", URL.class.getName(), urlTypeIndex, attribMethod);
@@ -899,7 +907,7 @@ public class ExtensionLoader<T> {
                         type.getName(), Arrays.toString(value));
                 code.append(s);
 
-                s = String.format("\n%s extension = (%<s)%s.getExtensionLoader(%s.class).getExtension(extName);",
+                s = String.format("\n%s extension = (%<s)%s.getExtensionLoader(%s.class).getExtension(extName);", // 这里就拿个了扩展点的具体实现类对象
                         type.getName(), ExtensionLoader.class.getSimpleName(), type.getName());
                 code.append(s);
 
@@ -915,7 +923,7 @@ public class ExtensionLoader<T> {
                         code.append(", ");
                     code.append("arg").append(i);
                 }
-                code.append(");");
+                code.append(");");  // 这里就是调用具体实现类的方法了
             }
 
             codeBuidler.append("\npublic " + rt.getCanonicalName() + " " + method.getName() + "(");

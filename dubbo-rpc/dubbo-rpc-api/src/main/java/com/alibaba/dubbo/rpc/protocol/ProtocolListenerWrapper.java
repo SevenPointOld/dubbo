@@ -31,13 +31,14 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 
 /**
- * ListenerProtocol
+ * ListenerProtocol， 事件监听机制 + QoS
  *
  * @author william.liangf
  */
 public class ProtocolListenerWrapper implements Protocol {
     static {
         try {
+            // 启动 QoS，能够提供telnet以及HTTP的访问服务状态
             Class serverClass = Protocol.class.getClassLoader().loadClass("com.alibaba.qos.server.Server");
             Method serverGetInstanceMethod = serverClass.getMethod("getInstance");
             Object serverInstance = serverGetInstanceMethod.invoke(null);
@@ -66,6 +67,7 @@ public class ProtocolListenerWrapper implements Protocol {
         if (Constants.REGISTRY_PROTOCOL.equals(invoker.getUrl().getProtocol())) {
             return protocol.export(invoker);
         }
+        // ListenerExporterWrapper会将invoker导出和关闭事件通知已注册的监听器，但是ExporterListener貌似还没有框架的实现，只是提供了一个扩展点
         return new ListenerExporterWrapper<T>(protocol.export(invoker),
                 Collections.unmodifiableList(ExtensionLoader.getExtensionLoader(ExporterListener.class)
                         .getActivateExtension(invoker.getUrl(), Constants.EXPORTER_LISTENER_KEY)));
